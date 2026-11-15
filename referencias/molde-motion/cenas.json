@@ -1,0 +1,12 @@
+[
+ {"id":"vale","dur":3.0,"cena":{"tipo":"lista","chamada":"Onde eu pesquisei","manchete":["Vale do","Silício"],"realce":1,"itens":["Google","Anthropic"],"rotulo":"quem dita as tendências","ritmo":0.35}},
+ {"id":"q1","dur":2.8,"cena":{"tipo":"variacao","chamada":"Em queda · nº 1","manchete":["Programador","de sites"],"pct":-51,"antes":"Ano passado","agora":"Este ano","rotulo":"a IA já faz sites e landing pages"}},
+ {"id":"q2","dur":2.8,"cena":{"tipo":"variacao","chamada":"Em queda · nº 2","manchete":["Dev de apps","nativos"],"pct":-46,"antes":"Ano passado","agora":"Este ano","rotulo":"Android e iOS nativos"}},
+ {"id":"q3","dur":2.8,"cena":{"tipo":"variacao","chamada":"Em queda · nº 3","manchete":["Designer","de UX"],"pct":-28,"antes":"Ano passado","agora":"Este ano","rotulo":"experiência do usuário: e tende a cair"}},
+ {"id":"q4","dur":2.6,"cena":{"tipo":"tendencia","sentido":"cai","chamada":"Em queda · nº 4","manchete":["Design de","produto"],"palavra":"Caindo","rotulo":"vaga que vem caindo bastante"}},
+ {"id":"a1","dur":2.6,"cena":{"tipo":"tendencia","chamada":"Em alta · nº 1","manchete":["Segurança","digital"],"realce":1,"palavra":"Em alta","rotulo":"proteger sistemas e dados"}},
+ {"id":"a2","dur":2.6,"cena":{"tipo":"tendencia","chamada":"Em alta · nº 2","manchete":["Engenheiro","de IA"],"realce":1,"palavra":"Em alta","rotulo":"automatizar processos com IA"}},
+ {"id":"a3","dur":2.8,"cena":{"tipo":"variacao","chamada":"Em alta · nº 3","manchete":["Cadeia de","suprimentos"],"realce":1,"pct":63,"antes":"Ano passado","agora":"Este ano","rotulo":"compra e entrega de chips"}},
+ {"id":"a4","dur":2.6,"cena":{"tipo":"tendencia","chamada":"Em alta · nº 4","manchete":["Engenheiro de","hardware"],"realce":1,"palavra":"Em alta","rotulo":"construir e aprimorar chips"}},
+ {"id":"resumo","dur":4.2,"cena":{"tipo":"lista","chamada":"Resumo","manchete":["Onde eu","focaria"],"realce":1,"itens":["Segurança digital","Engenheiro de IA","Cadeia de suprimentos","Engenheiro de hardware"],"rotulo":"tendência de alta em 2027","ritmo":0.38}}
+]

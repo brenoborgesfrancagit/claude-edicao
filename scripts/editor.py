@@ -203,7 +203,8 @@ def ilhas_de_som(video, limiar=None, sil_min=0.20):
     db = 20 * np.log10(rms + 1e-9)
     if limiar is None:
         chao, fala = np.percentile(db, 10), np.percentile(db, 95)
-        limiar = float(min(max(chao + 0.3 * (fala - chao), chao + 6), fala - 12))
+        # a fala fica perto do percentil 95; respiração e cauda de eco ficam 20-30 dB abaixo dela
+        limiar = float(min(max(chao + 0.5 * (fala - chao), fala - 25, chao + 6), fala - 12))
         limiar = max(limiar, -58.0)  # gravações com silêncio digital absoluto não puxam o limiar para baixo demais
     voz = db > limiar
     ilhas, k = [], 0
@@ -363,6 +364,8 @@ def cmd_plano(a):
         if d - c > 0.03:
             tira.append((c, d))
     tira += intervalos(a.cortar)
+    if a.revisao and os.path.exists(os.path.join(a.pasta, "revisao.json")):
+        tira += [(c["ini"], c["fim"]) for c in ler_json(os.path.join(a.pasta, "revisao.json"))["cortes"]]
     manter = subtrair(manter, tira)
     manter = [(x, y) for x, y in juntar(manter, folga=0.04) if y - x >= a.trecho_min]
     # 5) alinha à grade de quadros (assim áudio e vídeo nunca escorregam)
@@ -408,7 +411,8 @@ def cmd_plano(a):
                                                                                         marca.get("cor_legenda", "#FFE14D"))}),
         "audio": antigo.get("audio", {"lufs": -14, "reduzir_ruido": True}),
         "parametros": {"pausa_max": a.pausa_max, "folga": a.folga, "limiar": a.limiar, "agressivo": a.agressivo,
-                       "cortar": a.cortar, "cortar_palavras": a.cortar_palavras, "gancho": a.gancho},
+                       "cortar": a.cortar, "cortar_palavras": a.cortar_palavras, "gancho": a.gancho,
+                       "revisao": a.revisao},
         "palavras_removidas": sorted(removidas),
         "segmentos": segmentos,
     }
@@ -756,6 +760,86 @@ def cmd_trecho(a):
             print(f"{w.start + ini:8.2f}-{w.end + ini:6.2f}  {w.word.strip()}  ({w.probability:.2f})")
 
 
+# ---------------------------------------------------------------- revisar (segunda passada nos trechos mantidos)
+def cmd_revisar(a):
+    """Re-transcreve CADA trecho mantido sozinho, em modo literal (com o melhor modelo), e caça o que sobrou:
+    "é"/"ééé" de hesitação, "ãh", palavras repetidas. Escreve revisao.txt (para ler) e revisao.json (cortes,
+    em tempo do bruto), que o  plano --revisao  aplica."""
+    from faster_whisper import WhisperModel
+    import numpy as np
+    plano = ler_json(os.path.join(a.pasta, "plano.json"))
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", plano["video"], "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+                       stdout=subprocess.PIPE)
+    audio = np.frombuffer(r.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+    print(f"Revisando {len(plano['segmentos'])} trechos com o modelo '{a.modelo}'...", flush=True)
+    m = WhisperModel(a.modelo, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4)
+    caminho = os.path.join(a.pasta, "revisao.json")
+    anterior = ler_json(caminho) if os.path.exists(caminho) else {"cortes": []}
+    todas = []
+    for n, sg in enumerate(plano["segmentos"]):
+        if sg.get("gancho"):
+            continue
+        i0, i1 = max(0.0, sg["ini"] - 0.05), sg["fim"] + 0.05
+        pedaco = audio[int(i0 * 16000):int(i1 * 16000)]
+        res, _ = m.transcribe(pedaco, language=a.idioma, word_timestamps=True, condition_on_previous_text=False,
+                              beam_size=5, initial_prompt=PROMPT_LITERAL)
+        for x in res:
+            for w in x.words or []:
+                if w.word.strip():
+                    todas.append({"w": w.word.strip(), "ini": round(w.start + i0, 3), "fim": round(w.end + i0, 3),
+                                  "p": round(w.probability, 3), "seg": n})
+        print(f"  trecho {n + 1}/{len(plano['segmentos'])}", end="\r", flush=True)
+    print()
+    todas.sort(key=lambda w: w["ini"])
+    marcar = {}
+    for k, w in enumerate(todas):
+        nw = norm(w["w"])
+        prim = k == 0 or todas[k - 1]["seg"] != w["seg"]
+        antes = w["ini"] - todas[k - 1]["fim"] if k > 0 else 9
+        depois = todas[k + 1]["ini"] - w["fim"] if k + 1 < len(todas) else 9
+        if nw in VICIOS:
+            marcar[k] = "vício"
+        elif nw in VICIOS_AMBIGUOS and nw in ("é", "e", "ah", "ã") and (
+                re.search(r"(\.\.\.|…|,)$", w["w"]) or w["fim"] - w["ini"] > 0.4 or prim or (antes > 0.2 and depois > 0.2)):
+            marcar[k] = "é de hesitação"
+        elif a.agressivo and nw in VICIOS_AGRESSIVO:
+            marcar[k] = "vício"
+    # repetições: sequência de 1-5 palavras repetida em seguida (fica a última)
+    nv = [norm(w["w"]) for w in todas]
+    for n in range(5, 0, -1):
+        for k in range(len(todas) - 2 * n + 1):
+            if any(j in marcar for j in range(k, k + 2 * n)):
+                continue
+            if all(nv[k:k + n]) and nv[k:k + n] == nv[k + n:k + 2 * n] and (n > 1 or len(nv[k]) > 1) \
+                    and todas[k + n]["ini"] - todas[k + n - 1]["fim"] < 1.2:
+                for j in range(k, k + n):
+                    marcar[j] = "repetição"
+    cortes = []
+    for k, motivo in sorted(marcar.items()):
+        w = todas[k]
+        ant = max((todas[j]["fim"] for j in range(k - 1, -1, -1) if j not in marcar), default=0.0) if k else 0.0
+        prox = next((todas[j]["ini"] for j in range(k + 1, len(todas)) if j not in marcar), 1e9)
+        c, d = max(w["ini"] - 0.02, ant), min(w["fim"] + 0.02, prox)
+        if d - c > 0.04:
+            cortes.append({"ini": round(c, 3), "fim": round(d, 3), "w": w["w"], "motivo": motivo})
+    vistos = {(round(c["ini"], 1), round(c["fim"], 1)) for c in anterior.get("cortes", [])}
+    junt = anterior.get("cortes", []) + [c for c in cortes if (round(c["ini"], 1), round(c["fim"], 1)) not in vistos]
+    gravar_json(caminho, {"modelo": a.modelo, "cortes": junt})
+    with open(os.path.join(a.pasta, "revisao.txt"), "w", encoding="utf-8") as f:
+        f.write("# Revisão literal dos trechos mantidos. [CORTA:motivo] = sai no próximo  plano --revisao\n\n")
+        seg_atual = None
+        for k, w in enumerate(todas):
+            if w["seg"] != seg_atual:
+                seg_atual = w["seg"]
+                f.write(f"\n[{fmt_t(w['ini'])}] ")
+            f.write(f"{w['w']}[CORTA:{marcar[k]}] " if k in marcar else w["w"] + " ")
+        f.write("\n")
+    from collections import Counter
+    c = Counter(marcar.values())
+    print(f"Encontrados nesta passada: {dict(c)}. Total de cortes de revisão: {len(junt)}.")
+    print(f"Leia {os.path.join(a.pasta, 'revisao.txt')} e rode  plano ... --revisao")
+
+
 # ---------------------------------------------------------------- quadros
 def cmd_quadros(a):
     m = info(a.video)
@@ -765,8 +849,10 @@ def cmd_quadros(a):
     passo = m["duracao"] / n
     saida = a.saida or os.path.splitext(a.video)[0] + "-quadros.png"
     larg = 220 if m["altura"] > m["largura"] else 400
-    vf = (f"fps=1/{passo:.4f},scale={larg}:-2,drawtext=fontfile='{os.path.join(FONTES, 'Montserrat-ExtraBold.ttf')}':"
-          f"text='%{{pts\\:hms}}':x=6:y=6:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.6,tile={cols}x{linhas}:padding=4")
+    # o tempo é escrito ANTES de escolher os quadros, assim cada quadro mostra o tempo real dele
+    vf = (f"scale={larg}:-2,drawtext=fontfile='{os.path.join(FONTES, 'Montserrat-ExtraBold.ttf')}':"
+          f"text='%{{pts\\:hms}}':x=6:y=6:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.6,"
+          f"fps=1/{passo:.4f},tile={cols}x{linhas}:padding=4")
     rodar(["ffmpeg", "-y", "-v", "error", "-ss", f"{passo / 2:.3f}", "-copyts", "-i", a.video, "-vf", vf, "-frames:v", "1", saida])
     print(saida)
 
@@ -788,6 +874,7 @@ def main():
     p.add_argument("--cortar", help="trechos do bruto para remover: '12.3-15.8, 1:02-1:07.5'")
     p.add_argument("--cortar-palavras", help="índices de palavras para remover: '40-63, 88'")
     p.add_argument("--gancho", help="trecho do bruto repetido no início como gancho: '45.2-48.9'")
+    p.add_argument("--revisao", action="store_true", help="aplica os cortes de revisao.json (do comando revisar)")
     p.add_argument("--zoom", type=float, default=1.14, help="zoom do punch-in nos cortes")
     p.add_argument("--deriva", type=float, default=0.035, help="zoom lento contínuo dentro de cada trecho")
     p.add_argument("--trecho-min", type=float, default=0.22)
@@ -798,12 +885,15 @@ def main():
     p.add_argument("--saida"); p.add_argument("--manter-trechos", action="store_true")
     p = sub.add_parser("trecho"); p.add_argument("ini"); p.add_argument("fim"); p.add_argument("--pasta", default=".")
     p.add_argument("--modelo", default="medium"); p.add_argument("--idioma", default="pt")
+    p = sub.add_parser("revisar"); p.add_argument("--pasta", default=".")
+    p.add_argument("--modelo", default="large-v3"); p.add_argument("--idioma", default="pt")
+    p.add_argument("--agressivo", action="store_true")
     p = sub.add_parser("quadros"); p.add_argument("video"); p.add_argument("--saida"); p.add_argument("--n", type=int, default=24)
     a = ap.parse_args()
     if a.cmd == "info":
         print(json.dumps(info(a.video), indent=2))
     else:
-        {"transcrever": cmd_transcrever, "plano": cmd_plano, "trecho": cmd_trecho, "render": cmd_render, "quadros": cmd_quadros}[a.cmd](a)
+        {"transcrever": cmd_transcrever, "plano": cmd_plano, "trecho": cmd_trecho, "revisar": cmd_revisar, "render": cmd_render, "quadros": cmd_quadros}[a.cmd](a)
 
 
 if __name__ == "__main__":

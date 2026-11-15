@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080, height=1920" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@500;600;700&display=swap" />
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="studio.js"></script>
+<style>
+  :root { --paper: #FFF1E5; --ink: #1A1A1A; --rule: #E3D3C3; --muted: #6B5E55; --accent: #0F5499; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--paper); }
+  #root { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: var(--paper);
+    font-family: 'Inter', sans-serif; color: var(--ink); }
+  .abs { position: absolute; }
+  #grao { position: absolute; inset: 0; }
+  .mask { position: absolute; overflow: hidden; }
+  .mask > div { will-change: transform; }
+  .kicker { font: 600 34px/1 'Inter'; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .head { font: 900 124px/1.02 'Playfair Display'; letter-spacing: -0.02em; }
+  .big { font: 900 300px/1 'Playfair Display'; letter-spacing: -0.03em; font-variant-numeric: lining-nums tabular-nums; }
+  .lbl { font: 500 36px/1 'Inter'; color: var(--muted); }
+  .rowlbl { font: 600 40px/1 'Inter'; }
+  .val { font: 900 64px/1 'Playfair Display'; font-variant-numeric: lining-nums tabular-nums; }
+  .pos { font: 900 72px/1 'Playfair Display'; }
+  .line { position: absolute; height: 4px; background: var(--ink); transform-origin: left center; }
+  .bar { position: absolute; height: 96px; background: var(--ink); transform-origin: left center; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="__DUR__" data-width="1080" data-height="1920">
+  <canvas id="grao" width="540" height="960"></canvas>
+  <div aria-hidden="true" style="position:absolute;left:-9999px;top:0;opacity:0">
+    <span style="font:500 20px 'Inter'">Aa ç ã ê é í ó ú Nº 0123456789 Resumo</span>
+    <span style="font:600 20px 'Inter'">Aa ç ã ê é í ó ú Nº 0123456789 Resumo</span>
+    <span style="font:700 20px 'Inter'">Aa ç ã ê é í ó ú</span>
+    <span style="font:700 20px 'Playfair Display'">Aa ç ã ê é</span>
+    <span style="font:900 20px 'Playfair Display'">Aa ç ã ê é 0123456789 −+%</span>
+  </div>
+</div>
+<script>
+const CENA = __CENA__;
+const S = STUDIO, root = S.root, M = 96;   // margem
+const el = (cls, css, html, parent) => { const d = document.createElement('div'); d.className = cls;
+  Object.assign(d.style, css || {}); if (html != null) d.innerHTML = html; (parent || root).appendChild(d); return d; };
+// texto que entra por máscara (desliza de baixo), nunca por fade
+const mascara = (cls, txt, x, y, w, h) => { const m = el('mask', { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+  const d = el(cls, {}, txt, m); return d; };
+
+// grão de papel fino, estático, com semente fixa
+(function () { const c = document.getElementById('grao'), g = c.getContext('2d'), r = S.rng(7);
+  const img = g.createImageData(c.width, c.height);
+  for (let i = 0; i < img.data.length; i += 4) { const v = r() * 255; img.data[i] = img.data[i+1] = img.data[i+2] = v; img.data[i+3] = 10; }
+  g.putImageData(img, 0, 0); c.style.width = '1080px'; c.style.height = '1920px'; })();
+
+const anima = [];   // funções (t) => desenha
+const fx = (f) => anima.push(f);
+const deslizar = (node, t0, dur) => fx(t => { const p = S.seg(t, t0, dur || 0.6, 'expo.out');
+  node.style.transform = `translateY(${(1 - p) * 110}%)`; });
+const tracar = (node, t0, dur) => fx(t => { node.style.transform = `scaleX(${S.seg(t, t0, dur || 0.5, 'power2.inOut')})`; });
+
+// ---------- cabeçalho comum: barrinha de tinta, chamada, manchete, fio
+const topo = CENA.topo || 210;
+const tick = el('line', { left: M + 'px', top: topo + 'px', width: '88px', height: '10px' }); tracar(tick, 0.0, 0.35);
+const k = mascara('kicker', CENA.chamada, M, topo + 44, 900, 44); deslizar(k, 0.08, 0.55);
+let y = topo + 112;
+(CENA.manchete || []).forEach((linha, i) => { const h = mascara('head', linha, M, y, 1000, 134);
+  if (i === CENA.realce) h.style.color = 'var(--accent)'; deslizar(h, 0.16 + i * 0.09, 0.65); y += 128; });
+const fio = el('line', { left: M + 'px', top: (y + 26) + 'px', width: (1080 - 2 * M) + 'px', height: '3px' });
+tracar(fio, 0.35, 0.55);
+y += 90;
+
+// ---------- tipos de cena
+if (CENA.tipo === 'variacao') {
+  // duas barras: "antes" (tinta) e "agora" (azul) que cresce ou encolhe; número grande conta junto
+  const pct = CENA.pct, maxv = Math.max(100, 100 + pct), W = 1080 - 2 * M - 40, t0 = 0.62, dur = 1.15;
+  const yA = y + 40, yB = yA + 190;
+  const la = mascara('rowlbl', CENA.antes || 'Ano passado', M, yA, 700, 50); deslizar(la, 0.45, 0.5);
+  const lb = mascara('rowlbl', CENA.agora || 'Agora', M, yB, 700, 50); deslizar(lb, 0.52, 0.5); lb.style.color = 'var(--accent)';
+  const bA = el('bar', { left: M + 'px', top: (yA + 64) + 'px', width: (W * 100 / maxv) + 'px' });
+  const bB = el('bar', { left: M + 'px', top: (yB + 64) + 'px', width: (W * 100 / maxv) + 'px', background: 'var(--accent)' });
+  fx(t => { bA.style.transform = `scaleX(${S.seg(t, 0.4, 0.55, 'power2.inOut')})`; });
+  // a azul nasce igual à de antes e vai ao valor novo
+  fx(t => { const a = S.seg(t, 0.4, 0.55, 'power2.inOut'), b = S.seg(t, t0 + 0.25, dur, 'power2.inOut');
+    bB.style.transform = `scaleX(${a * (1 + (pct / 100) * b)})`; });
+  // marca fantasma onde a barra azul começou (só na queda)
+  if (pct < 0) { const fant = el('abs', { left: (M + W * 100 / maxv - 3) + 'px', top: (yB + 52) + 'px', width: '3px', height: '120px', background: 'var(--ink)', transformOrigin: 'top' });
+    const era = el('lbl', { position: 'absolute', left: (M + W * 100 / maxv - 120) + 'px', top: (yB + 186) + 'px' }, 'era 100');
+    fx(t => { const p = S.seg(t, t0 + 0.4, 0.4, 'power2.inOut'); fant.style.transform = `scaleY(${p})`; era.style.opacity = S.seg(t, t0 + 0.7, 0.3, 'power2.out'); }); }
+  // número grande
+  const yN = yB + 330, num = el('big', { position: 'absolute', left: (M - 8) + 'px', top: yN + 'px' }, '');
+  const pctEl = el('big', { position: 'absolute', top: yN + 'px', fontSize: '170px', lineHeight: '1', paddingTop: '18px' }, '%');
+  fx(t => { const p = S.seg(t, t0 + 0.25, dur, 'power2.inOut'), v = Math.round(Math.abs(pct) * p);
+    num.textContent = (pct < 0 ? '−' : '+') + v; num.style.opacity = S.seg(t, t0, 0.2, 'none');
+    pctEl.style.left = (M - 8 + num.offsetWidth + 6) + 'px'; pctEl.style.opacity = num.style.opacity; });
+  const sub = el('line', { left: M + 'px', top: (yN + 330) + 'px', width: '520px', height: '8px', background: 'var(--accent)' }); tracar(sub, t0 + 1.0, 0.5);
+  const rot = mascara('lbl', CENA.rotulo || '', M, yN + 366, 900, 46); deslizar(rot, t0 + 1.15, 0.6);
+}
+
+if (CENA.tipo === 'tendencia') {
+  // sem número: linha de tendência se desenha da esquerda para a direita, palavra grande no fim
+  const W = 1080 - 2 * M, H = 560, y0 = y + 60, cv = el('abs', { left: M + 'px', top: y0 + 'px', width: W + 'px', height: H + 'px' });
+  cv.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+  const svg = cv.firstChild, ns = 'http://www.w3.org/2000/svg';
+  for (let i = 0; i <= 4; i++) { const l = document.createElementNS(ns, 'line'); l.setAttribute('x1', 0); l.setAttribute('x2', W);
+    l.setAttribute('y1', i * H / 4); l.setAttribute('y2', i * H / 4); l.setAttribute('stroke', i === 4 ? '#1A1A1A' : '#E3D3C3');
+    l.setAttribute('stroke-width', i === 4 ? 4 : 2); svg.appendChild(l); }
+  const sobe = CENA.sentido !== 'cai', r = S.rng(3), pts = [];
+  for (let i = 0; i <= 10; i++) { const base = sobe ? 0.82 - 0.66 * (i / 10) ** 1.6 : 0.2 + 0.62 * (i / 10) ** 1.4;
+    pts.push([i * W / 10, (base + (r() - 0.5) * 0.06) * H]); }
+  const path = document.createElementNS(ns, 'path'); path.setAttribute('d', 'M' + pts.map(p => p.join(',')).join(' L'));
+  path.setAttribute('fill', 'none'); path.setAttribute('stroke', '#0F5499'); path.setAttribute('stroke-width', 12);
+  path.setAttribute('stroke-linejoin', 'round'); path.setAttribute('stroke-linecap', 'round'); svg.appendChild(path);
+  const dot = document.createElementNS(ns, 'circle'); dot.setAttribute('r', 20); dot.setAttribute('fill', '#0F5499'); svg.appendChild(dot);
+  const L = path.getTotalLength(); path.style.strokeDasharray = L;
+  fx(t => { const p = S.seg(t, 0.6, 1.2, 'power2.inOut'); path.style.strokeDashoffset = L * (1 - p);
+    const q = path.getPointAtLength(L * p); dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y); dot.style.opacity = p > 0.01 ? 1 : 0; });
+  const pal = mascara('big', CENA.palavra, M - 8, y0 + H + 70, 1000, 300); pal.style.fontSize = '230px'; deslizar(pal, 1.55, 0.7);
+  const rot = mascara('lbl', CENA.rotulo || '', M, y0 + H + 330, 900, 46); deslizar(rot, 1.75, 0.6);
+}
+
+if (CENA.tipo === 'lista') {
+  // ranking: posição, nome, fio que se desenha; um item em azul
+  const passo = CENA.passo || 190;
+  CENA.itens.forEach((it, i) => { const t0 = 0.55 + i * (CENA.ritmo || 0.32), yy = y + 60 + i * passo;
+    const p = mascara('pos', String(i + 1), M, yy, 90, 90); deslizar(p, t0, 0.55);
+    const n = mascara('rowlbl', it, M + 110, yy + 14, 860, 60); n.style.fontSize = '54px'; deslizar(n, t0 + 0.05, 0.55);
+    if (i === CENA.realceItem) { p.style.color = n.style.color = 'var(--accent)'; }
+    const f = el('line', { left: M + 'px', top: (yy + 112) + 'px', width: (1080 - 2 * M) + 'px', height: '2px', background: 'var(--rule)' }); tracar(f, t0 + 0.1, 0.5); });
+  if (CENA.rotulo) { const yy = y + 60 + CENA.itens.length * passo + 40; const s = el('line', { left: M + 'px', top: yy + 'px', width: '360px', height: '8px', background: 'var(--accent)' });
+    const tt = 0.55 + CENA.itens.length * (CENA.ritmo || 0.32); tracar(s, tt, 0.5); const r = mascara('lbl', CENA.rotulo, M, yy + 36, 900, 46); deslizar(r, tt + 0.1, 0.6); }
+}
+
+// câmera: zoom lento contínuo (nada fica 100 % parado), nunca tremida
+fx(t => { root.style.transformOrigin = '50% 35%'; root.style.transform = `scale(${1 + 0.035 * S.seg(t, 0, S.D, 'sine.inOut')})`; });
+
+window.__timelines["main"] = S.play(function render(t) { for (const f of anima) f(t); }, { loop: false });
+</script>
+</body>
+</html>

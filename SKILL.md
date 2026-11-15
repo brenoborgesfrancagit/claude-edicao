@@ -56,6 +56,15 @@ O plano mede o som real (limiar automático) e corta: silêncios maiores que `--
 e `<pasta>/transcricao-editada.txt` (já com os tempos do vídeo final). Se uma frase ficou truncada ou sem
 sentido, ajuste e rode de novo. Rodar o plano de novo preserva textos, inserções e legendas já configurados.
 
+**3b. Revisão literal (obrigatória antes do final).** `$SKILL/scripts/ed revisar --pasta <pasta>` re-transcreve
+cada trecho mantido sozinho (padrão `large-v3`; se o download travar, `--modelo medium`) e marca o que sobrou:
+"é" de hesitação, "ãh", repetições. Leia `revisao.txt`: o "é" VERBO ("a segunda que mais cresce **é** engenheiro",
+"também **é** uma vaga") e o "E" conjunção ("**E** designer de produtos") às vezes vêm marcados por engano; tire
+esses itens de `revisao.json` antes de aplicar. Restos de frases cortadas também aparecem aqui (corte com
+`--cortar`). Depois rode o mesmo `plano` de antes com `--revisao`. Para ritmo de Reels: `--pausa-max 0.12
+--folga 0.05`. Confira as pausas no final com
+`ffmpeg -i final.mp4 -af silencedetect=noise=-40dB:d=0.3 -f null -` (meta: quase nenhuma).
+
 **4. Direção visual no `plano.json`** (edite o arquivo; regras de ritmo em `referencias/retencao.md`):
 - `foco`: `{"x":0.5,"y":0.4}` posição do rosto (0 a 1) para o corte 9:16. Ajuste olhando os quadros do bruto.
   Para um trecho específico, coloque `"foco"` dentro do segmento.
@@ -73,7 +82,9 @@ sentido, ajuste e rode de novo. Rodar o plano de novo preserva textos, inserçõ
 **5. Motion graphics, quando convém.** Bons lugares: abertura com o título (1,5 a 3 s), listas e números
 ("3 erros", "R$ 10 mil"), comparação, passo a passo, dado que precisa de visual, CTA final. Não mais que
 1 inserção a cada ~15 s, e nunca sobre o momento em que o rosto/emoção é o que importa.
-Para fazer: siga a **skill claude-video** (`~/.claude/skills/claude-video/SKILL.md`) direto na etapa C
+Molde pronto de cards 9:16 (variação com número que conta, tendência, lista) usado no primeiro vídeo:
+`referencias/molde-motion/` (gerar com `gerar.py`, renderizar com `render.sh` da claude-video).
+Para peças novas: siga a **skill claude-video** (`~/.claude/skills/claude-video/SKILL.md`) direto na etapa C
 (construir), **sem a galeria e sem as 5 perguntas**: o estilo vem do `marca.json` (`estilo_motion`) ou, se
 não houver, escolha um da galeria que combine e diga qual escolheu. Brief: 1080x1920 (9x16), a duração exata
 do trecho, 30 fps, sem loop, as palavras exatas da fala daquele momento. Salve o MP4 na pasta de trabalho e
@@ -101,6 +112,7 @@ agressivo?", "quer um motion graphic na abertura?").
   forte, passe `--limiar` (o resumo do plano mostra o limiar automático; suba 3-6 dB para cortar mais).
 - "Legenda maior/menor/outra cor" → `legendas.tamanho` (96), `cor`, `cor_destaque`, `altura` (0.66),
   `max_palavras` (3), `maiusculas`. "Sem legenda" → `legendas.ligadas: false`.
+- "Vou usar a legenda do Instagram" → `legendas.ligadas: false` (títulos e motion graphics continuam).
 - "Sem barra" → `barra_progresso.ligada: false`. "Sem zoom" → zoom 1.0 e deriva 0 nos segmentos.
 - Vídeo para YouTube horizontal: fora do escopo atual desta skill (ela entrega 9:16). Diga isso.
 
