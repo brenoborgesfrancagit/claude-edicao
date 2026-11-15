@@ -22,7 +22,7 @@ W, H = 1080, 1920
 
 # Hesitações: sempre cortadas. "é", "e", "ah" sozinhos só são vício quando vêm com reticências ou isolados por
 # pausas (senão é o verbo "é"). "né", "tipo", "assim"... só com --agressivo (às vezes têm sentido).
-VICIOS = {"éé", "ééé", "eee", "ãh", "ãã", "ããã", "ahn", "aham", "hum", "humm", "hmm", "hm", "uh", "uhm", "um", "er", "hã", "hãã", "eh", "ehh"}
+VICIOS = {"éé", "ééé", "eee", "ãh", "ãã", "ããã", "ahn", "aham", "hum", "humm", "hmm", "hm", "uh", "uhm", "er", "hã", "hãã", "eh", "ehh"}
 VICIOS_AMBIGUOS = {"é", "e", "ah", "ã", "a", "o"}
 VICIOS_AGRESSIVO = {"né", "tipo", "assim", "então", "enfim", "basicamente", "sabe", "entendeu", "olha", "bom", "beleza"}
 
@@ -324,10 +324,10 @@ def cmd_plano(a):
     sons_cortados, decisao = [], []
     for (x, y), ws in zip(ilhas, donos):
         uteis = [w for w in ws if w["i"] not in removidas]
-        corta = (not ws and y - x < a.som_max) or (ws and not uteis) or \
+        corta = (not ws) or (ws and not uteis) or \
                 (len(uteis) == 1 and uteis[0]["p"] < 0.5 and y - x < 0.6)
         decisao.append(not corta)
-        if corta:
+        if corta and not ws:
             sons_cortados.append((x, y))
     # 3) junta ilhas vizinhas mantidas quando a pausa entre elas é curta (respiro natural)
     manter = []
@@ -422,8 +422,12 @@ def cmd_plano(a):
                     s[chave] = v[chave]
     gravar_json(caminho_plano, plano)
     final = escrever_editada(a.pasta, plano, palavras)
-    if sons_cortados:
-        motivos.setdefault("som sem palavra (hesitação)", []).extend(f"{fmt_t(x)}" for x, _ in sons_cortados)
+    curtos = [f"{fmt_t(x)}" for x, y in sons_cortados if y - x < a.som_max]
+    longos = [f"{fmt_t(x)}-{fmt_t(y)}" for x, y in sons_cortados if y - x >= a.som_max]
+    if curtos:
+        motivos.setdefault("som sem palavra (hesitação)", []).extend(curtos)
+    if longos:
+        motivos.setdefault("som LONGO sem palavra (ruído? confira com  ed trecho)", []).extend(longos)
     print(f"Limiar de silêncio: {limiar} dB")
     print(f"Bruto: {fmt_t(dur)}  ->  editado: {fmt_t(final)}  ({len(segmentos)} trechos, "
           f"{len(segmentos) - 1} cortes)")
@@ -763,7 +767,7 @@ def cmd_quadros(a):
     larg = 220 if m["altura"] > m["largura"] else 400
     vf = (f"fps=1/{passo:.4f},scale={larg}:-2,drawtext=fontfile='{os.path.join(FONTES, 'Montserrat-ExtraBold.ttf')}':"
           f"text='%{{pts\\:hms}}':x=6:y=6:fontsize=18:fontcolor=white:box=1:boxcolor=black@0.6,tile={cols}x{linhas}:padding=4")
-    rodar(["ffmpeg", "-y", "-v", "error", "-ss", f"{passo / 2:.3f}", "-i", a.video, "-vf", vf, "-frames:v", "1", saida])
+    rodar(["ffmpeg", "-y", "-v", "error", "-ss", f"{passo / 2:.3f}", "-copyts", "-i", a.video, "-vf", vf, "-frames:v", "1", saida])
     print(saida)
 
 
@@ -778,7 +782,7 @@ def main():
     p.add_argument("--pausa-max", type=float, default=0.30, help="pausas maiores que isto (s) são cortadas")
     p.add_argument("--folga", type=float, default=0.06, help="respiro antes/depois de cada fala (s)")
     p.add_argument("--limiar", type=float, default=None, help="dB abaixo do qual é silêncio (padrão: automático)")
-    p.add_argument("--som-max", type=float, default=0.9, help="som sem palavra menor que isto (s) é tratado como hesitação")
+    p.add_argument("--som-max", type=float, default=0.9, help="som sem palavra maior que isto (s) é listado no resumo para conferência")
     p.add_argument("--agressivo", action="store_true", help="corta também né, tipo, assim, então...")
     p.add_argument("--vicios", help="palavras extras para cortar, separadas por vírgula")
     p.add_argument("--cortar", help="trechos do bruto para remover: '12.3-15.8, 1:02-1:07.5'")
